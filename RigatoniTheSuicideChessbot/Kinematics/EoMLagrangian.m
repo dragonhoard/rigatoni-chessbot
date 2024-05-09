@@ -5,12 +5,14 @@
 close all
 clc
 
+rigatoni_params
+
 %% Forward Kinematics
 syms t1 t2 real
-syms l1 l2 d1
+%syms l1 l2 d1
 % INPUT: DH Table
     % alpha_(i-1)   a_(i-1)   d_i   theta_i   
-DHtab = [0, 0, d1, t1; ...
+DHtab = [0, 0, 0, t1; ...
          0, l1, 0, t2;
          0, l2, 0, 0];
 %%%%%%%%%%%%%% INPUT END %%%%%%%%%%%%%%%%%%
@@ -22,11 +24,11 @@ T_0_1 = Ts{1,2};
 T_0_2 = Ts{2,2};
 
 %% a) Link Inertia Matrix
-syms m1 m2
-syms l1 l2
-syms Ic1x Ic1y Ic1z Ic2x Ic2y Ic2z
-Ic1 = diag([Ic1x Ic1y Ic1z]);
-Ic2 = diag([Ic2x Ic2y Ic2z]);
+%syms m1 m2
+%syms l1 l2
+%syms Ic1x Ic1y Ic1z Ic2x Ic2y Ic2z
+%Ic1 = diag([Ic1x Ic1y Ic1z]);
+%Ic2 = diag([Ic2x Ic2y Ic2z]);
 %Ic1 = m1*l1^2/12*diag([0 1 1]); % TODO
 %Ic2 = m2*l2^2/12*diag([0 1 1]); % TODO
 
@@ -41,16 +43,16 @@ P_0_1 = pos(T_0_1);
 P_0_2 = pos(T_0_2);
 
 % position of center of mass
-syms P_1c1x P_2c2x
-P_1_c1 = [P_1c1x; 0; 0];
-P_2_c2 = [P_2c2x; 0; 0];
-%P_1_c1 = [l1/2; 0; 0];
-%P_2_c2 = [l2/2; 0; 0];
+%syms P_1c1x P_2c2x
+%P1c1 = [P_1c1x; 0; 0];
+%P2c2 = [P_2c2x; 0; 0];
+%P1c1 = [l1/2; 0; 0];
+%P2c2 = [l2/2; 0; 0];
 
 % position of center of mass in base frame
-P_0_c1 = T_0_1*[P_1_c1;1];
+P_0_c1 = T_0_1*[P1c1;1];
 P_0_c1 = P_0_c1(1:3);
-P_0_c2 = T_0_2*[P_2_c2;1];
+P_0_c2 = T_0_2*[P2c2;1];
 P_0_c2 = P_0_c2(1:3);
 
 % find Jv Jw
@@ -96,9 +98,4 @@ syms t1dd t2dd real
 qdd = [t1dd t2dd];
 tau1 = M(1,1)*qdd(1) + M(1,2)*qdd(2) + V(1) + G1;
 tau2 = M(2,1)*qdd(1) + M(2,2)*qdd(2) + V(2) + G2;
-
-% make matrices
-syms tor1 tor2
-eqns = [tau1 == tor1; tau2 == tor2]
-[A,b] = equationsToMatrix(eqns,[qdd])
 
