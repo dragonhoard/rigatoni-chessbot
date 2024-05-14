@@ -7,8 +7,7 @@ if nargin < 4
     style = 'ko-';
 end
 
-l1 = rigParam(1);
-l2 = rigParam(2);
+[l1, l2, ~] = getRigParam(rigParam);
 th1 = q(1);
 th2 = q(2);
 

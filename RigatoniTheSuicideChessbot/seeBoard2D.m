@@ -7,12 +7,7 @@ if nargin < 3
     color = 'k';
 end
 
-L = boardParam(1);
-l = boardParam(2);
-b = boardParam(3);
-s = boardParam(4);
-h = boardParam(5);
-gv = boardParam(6);
+[L, l, b, s, h, gv] = getBoardParam(boardParam);
 
 % plot base joint
 plot(ax, 0, 0, 'o', "Color", color)
@@ -42,5 +37,15 @@ end
 gvpt = [L/2+gv h+L/2];
 plot(ax, gvpt(1), gvpt(2), '*', "Color", color)
 plot(ax, -gvpt(1), gvpt(2), '*', "Color", color)
+
+% plot row labels
+xpts = linspace(-(l/2-s/2), (l/2-s/2), 8);
+ypts = h - s/2 + zeros(1,8);
+text(ax, xpts, ypts, ["A" "B" "C" "D" "E" "F" "G" "H"])
+
+% plot col labels
+xpts = -(L/2+s/2) + zeros(1,8);
+ypts = h + b + linspace(s/2, l-s/2, 8);
+text(ax, xpts, ypts, string(1:1:8))
 
 

@@ -10,7 +10,7 @@ b = (L-l)/2; % m, border width
 s = l/8; % m, playing square side length
 
 % additional dimensions
-h = 0.052; % m, offest from side of board to robot base
+h = 0.052; % m, offset from side of board to robot base
 gv = 1.5*s; % m, using 1.5 square lengths to graveyard spot
 
 % robot base placed at center of one of the playing sides

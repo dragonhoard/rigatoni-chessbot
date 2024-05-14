@@ -20,6 +20,14 @@ l2 = 0.165; % m
 
 rigParam = [l1, l2, tiny];
 
+%% speed limits allowed
+% actuator limits
+maxJtSpeed = 10; % deg/s, motor speed limit (dynamixel) DUMMY VALUE
+maxJtAcc = 10; % deg/s^2, DUMMY VALUE
+% task speed limits
+maxTaskSpeed = 10; % m/s, DUMMY VALUE
+maxTaskAcc = 10; % m/s^2, DUMMY VALUE
+
 %% mechanical parameters (get from solidworks and dynamixel site)
 
 %{ 
