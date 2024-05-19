@@ -25,8 +25,8 @@ q1 = rigatoni_2DIK(posEE, rigParam)
 q2 = rigatoni_2DIK(posEE, rigParam, 1)
 
 hold on
-seeRigatoni2D(q1, ax, rigParam, 'ro--')
-seeRigatoni2D(q2, ax, rigParam, 'bo--')
+%seeRigatoni2D(q1, ax, rigParam, 'ro--')
+%seeRigatoni2D(q2, ax, rigParam, 'bo--')
 xlim((l1+l2)*[-1 1])
 ylim((l1+l2)*[-1 1])
 axis equal
