@@ -84,6 +84,45 @@ def generate_time_trajectory(point_a, point_b, arm, traj_set):
     return tvec, tq, tg
 
 
+class TrajectoryHolder():
+    # TrajectoryHolder assumes trajectory inquiries will only ever be requested
+    # in time increasing order, unless restart_traj is called
+
+    def __init__(self, t, q, qd, qdd):
+        self.t = t
+        self.end_time = t[-1]
+        self.q = q
+        self.qd = qd
+        self.qdd = qdd
+
+        self.idx = 0  # current time index
+
+    def get_end_time(self):
+        return self.end_time
+
+    def get_q(self, time):
+        if time >= self.end_time:  # if past end time or is end time
+            return self.q[-1]   # return final desired posiion
+
+        while (self.t[self.idx] < time):  # advance index to the closest timestep (overshooting)
+            self.idx += 1
+        print(self.t[self.idx])
+
+        return self.q[self.idx]
+
+    def get_q_qd_qdd(self, time):
+        if time > self.end_time:  # if past end time
+            return self.q[-1], self.qd[-1], self.qdd[-1]  # return final values of trajectory
+
+        while (self.t[self.idx] < time):  # advance index to the closest timestep (overshooting)
+            self.idx += 1
+
+        return self.q[self.idx], self.qd[self.idx], self.qdd[self.idx]
+
+    def restart_traj(self): # in case it is ever needed to go back to th beginning of a trajectory, this resets the index
+        self.idx = 0
+
+
 # for testing purposes
 '''
 import RigatoniParameterClasses as par
