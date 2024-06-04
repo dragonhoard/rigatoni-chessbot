@@ -1,0 +1,6 @@
+numpy
+scipy
+dynamixel_controller
+pybind11
+pandas
+tqdm

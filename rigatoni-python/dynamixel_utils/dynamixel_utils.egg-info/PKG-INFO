@@ -1,0 +1,12 @@
+Metadata-Version: 2.1
+Name: dynamixel_utils
+Version: 0.0.0
+Author: Cole Ten
+Author-email: cten@ucla.edu
+Requires-Python: >=3.10
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: dynamixel_controller
+Requires-Dist: pybind11
+Requires-Dist: pandas
+Requires-Dist: tqdm
