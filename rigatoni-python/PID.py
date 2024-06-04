@@ -16,7 +16,10 @@ import dynio.dynamixel_controller as dxl
 from matplotlib import pyplot as plt
 from numpy.typing import NDArray
 
+from dynamixel_utils import FixedFrequencyLoopManager
+
 import dynamixel_utils
+from RigatoniTrajectoryGenerator import TrajectoryHolder
 
 class PIDPositionController:
     """
@@ -30,14 +33,14 @@ class PIDPositionController:
         K_P: NDArray[np.double],
         K_I: NDArray[np.double],
         K_D: NDArray[np.double],
-        q_initial_deg: Sequence[float],
-        q_desired_deg: Sequence[float],
+        # q_initial_deg: Sequence[float], # do i actually need this?
+        # q_desired_deg: Sequence[float],
     ):
         # ------------------------------------------------------------------------------
         # Controller Related Variables
         # ------------------------------------------------------------------------------
-        self.q_initial = np.asarray(q_initial_deg, dtype=np.double)
-        self.q_desired = np.asarray(q_desired_deg, dtype=np.double)
+        # self.q_initial = np.asarray(q_initial_deg, dtype=np.double)
+        # self.q_desired = np.asarray(q_desired_deg, dtype=np.double)
 
         self.K_P = np.asarray(K_P, dtype=np.double)
         self.K_I = np.asarray(K_I, dtype=np.double)
@@ -45,15 +48,17 @@ class PIDPositionController:
 
         self.control_freq_Hz = 30.0
         self.control_period_s = 1 / self.control_freq_Hz
-        self.loop_manager = dynamixel_utils.FixedFrequencyLoopManager(
+        self.loop_manager = FixedFrequencyLoopManager(
             period_ns=round(self.control_period_s * 1e9)
         )
+        self.timeout = 5
+        self.threshold = .5
         self.should_continue = True
 
-        self.joint_position_history = deque()
+
         self.timestamp = 0.0
         self.time_stamps = deque()
-        self.dt = self.loop_manager.period_s
+        self.dt = self.control_period_s
 
         self.error = np.zeros(2,)
         self.error_integral = np.zeros(2,)
@@ -88,6 +93,7 @@ class PIDPositionController:
         pwm_limit_data_address, pwm_limit_data_len = self.motors[0].CONTROL_TABLE[
             "PWM_Limit"
         ]
+
         pwm_limits = group_sync_read(
             self.dxl_io, self.dynamixel_ids, pwm_limit_data_address, pwm_limit_data_len
         )
@@ -159,19 +165,38 @@ class PIDPositionController:
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
 
-    def start(self):
+    def first_enable(self):
+        self.motors[0].torque_disable()
+        self.motors[1].torque_disable()
+
+        # Set PWM Mode (i.e. voltage control)
+        operating_mode_data_address, operating_mode_data_len = self.motors[
+            0
+        ].CONTROL_TABLE["Operating_Mode"]
+        group_sync_write(
+            self.dxl_io,
+            {dxl_id: 16 for dxl_id in self.dynamixel_ids},
+            operating_mode_data_address,
+            operating_mode_data_len,
+        )
+
         self.motors[0].torque_enable()
         self.motors[1].torque_enable()
+
+    def start(self, traj: TrajectoryHolder):
+        self.joint_position_history = deque()
         start_time = time.time()
+
         while self.should_continue:
+            print("Time: " + str(time.time()-start_time))
             # Step 1 - Get Feedback
             q_actual = self.read_joint_positions_deg()
-
             self.joint_position_history.append(q_actual)  # Save for plotting
             self.time_stamps.append(time.time() - start_time)  # Save for plotting
 
             # Step 2 - Calculate Command
-            self.error = self.q_desired - q_actual
+            print("Current Position: " + str(q_actual))
+            self.error = traj.get_q(time.time()-start_time) - q_actual # make sure the indexing is right
 
             self.error_window.appendleft(self.error)
             self.convergence_window.append(self.error)
@@ -180,50 +205,54 @@ class PIDPositionController:
             # only start derivative error at the second time step
             if len(self.error_window) == 2:
                 self.error_derivative = (
-                    (self.error_window[-1] - self.error_window[0]) / 2 / self.dt
+                    (self.error_window[-1] - self.error_window[0]) / self.dt
                 )
 
-            if len(self.convergence_window) == self.num_convergence_samples:
-                if np.mean(np.abs(self.convergence_window)) < 0.5:
-                    for motor in self.motors:
-                        motor.torque_disable()
-                    return
+            # if len(self.convergence_window) == self.num_convergence_samples:
+            #     if np.mean(np.abs(self.convergence_window)) < 0.5:
+            #         for motor in self.motors:
+            #             motor.torque_disable()
+            #         return
 
-            pwm_command = list()
-            for i in range(2):
-                pwm_command[i] = (
-                    self.K_P[i, i] * self.error
-                    + self.K_I[i, i] * self.error_integral
-                    + self.K_D[i, i] * self.error_derivative
-                )
+            pwm_commands = (
+                    self.K_P @ self.error
+                    + self.K_I @ self.error_integral
+                    + self.K_D @ self.error_derivative
+            )
+            # for i in range(len(dynamixel_ids)):
+            #     pwm_command[i] = (
+            #         self.K_P[i, i] * self.error
+            #         + self.K_I[i, i] * self.error_integral
+            #         + self.K_D[i, i] * self.error_derivative
+            #     )
+            pwm_command = pwm_commands.tolist()
             for i in range(len(self.motors)):
                 pwm_lim = self.pwm_limits[i]
-                pwm_command[i] = round(max(min(pwm_command[i], pwm_lim), -self.pwm_limits[i]))
+                pwm_command[i] = round(max(min(pwm_command[i], pwm_lim), -pwm_lim))
 
             # Step 3 - Send Command
-            for motor in self.motors:
-                motor.write_control_table("Goal_PWM", pwm_command)
+            for i in range(len(self.motors)):
+                print('PWM' + str(pwm_command[i]))
+                self.motors[i].write_control_table("Goal_PWM", pwm_command[i])
 
             # print(
             #     self.convert_encoder_tick_to_deg(
             #         self.motor.read_control_table("Present_Position")
             #     )
             # )
-
+            print("Error: " + str(self.error))
+            self.should_continue = (time.time()-start_time < traj.get_end_time() or  # trajectory not done
+                                    (not np.all(abs(self.error) < self.threshold) and time.time()-start_time < traj.get_end_time() + self.timeout)) # trajectory done, error is too large and have not timed out
             self.loop_manager.sleep()
-            self.timestamp += self.dt
 
-        for motor in self.motors:
-            motor.torque_disable()
 
     def stop(self):
         self.should_continue = False
-        time.sleep(self.loop_manager.period_s)
+        time.sleep(self.loop_manager.control_period_s)
 
-    def convert_encoder_tick_to_deg(self, encoder_tick: int):
-        deg = np.zeros(2,)
-        for i in range(len(self.motors)):
-            deg[i] = (encoder_tick - self.motors[i].min_position)/((self.motors[i].max_position + 1) - self.motors[i].min_position)*(self.motors[i].max_angle)
+    def convert_encoder_tick_to_deg(self, encoder_tick: int, motor_id: int):
+        # deg = np.zeros(2,)
+        deg = (encoder_tick - self.motors[motor_id].min_position)/((self.motors[motor_id].max_position + 1) - self.motors[motor_id].min_position)*(self.motors[motor_id].max_angle)
         return deg
 
     def signal_handler(self, *_):
@@ -248,8 +277,8 @@ class PIDPositionController:
 
         joint_positions = np.empty((2,), dtype=np.double)
         for i, motor in enumerate(self.motors):
-            joint_positions[i] = self.convert_position_tick_to_deg(
-                motor, joint_position_ticks_by_dxl_id[motor.dxl_id]
+            joint_positions[i] = self.convert_encoder_tick_to_deg(
+                joint_position_ticks_by_dxl_id[motor.dxl_id], i
             )
 
         return joint_positions
@@ -294,13 +323,22 @@ class PIDPositionController:
         )
 
 if __name__ == "__main__":
-    q_initial = [30, 30] # idk what this is supposed to look like
-    q_desired = [30, 100]
+    q_initial = [245, 25] # idk what this is supposed to look like
+    # q_desired = np.array([225, 45])
+    # cycles = 2  # how many sine cycles
+    # resolution = 25  # how many datapoints to generate
+    # length = np.pi * 2 * cycles
+    # my_wave = np.sin(np.arange(0, length, length / resolution))
+    # wave_length = np.linspace(0,5, resolution)
+    # trajy = np.vstack((wave_length, my_wave))
 
-    dynamixel_ids = (1, 2)
+    traj = testTraj.q
+    print(traj.shape)
+
+    dynamixel_ids = (1, 3)
     serial_port_name = "/dev/tty.usbserial-FT3FSMAZ"
 
-    K_P = np.array([[0.4, 0], [0, 0.2]])
+    K_P = np.array([[10, 0], [0, 10]])
     K_I = np.array([[0, 0], [0, 0]])
     K_D = np.array([[0, 0], [0, 0]])
 
@@ -312,13 +350,30 @@ if __name__ == "__main__":
         K_D=K_D,
         dynamixel_ids=dynamixel_ids,
         q_initial_deg=q_initial,
-        q_desired_deg=q_desired,
+        # q_desired_deg=q_desired,
     )
 
-    controller.start()
+    # while trajectory time is still going
+    controller.timestamp = 0.0
+    # print(controller.dt)
+    controller.motors[0].torque_enable()
+    controller.motors[1].torque_enable()
+    start_time = time.time()
+    # while controller.timestamp < 0.3:
+    controller.timestamp += controller.dt
+    # print(controller.timestamp)
+    # controller.time_stamps.append(time.time() - start_time)  # Save for plotting
+    controller.start(traj)
+
+    controller.motors[0].torque_disable()
+    controller.motors[1].torque_disable()
 
     # fig = plt.figure(1)
     # ax = fig.add_subplot(111)
     # ax.axhline(90.0, ls="--", color="red")
-    # ax.plot(controller.timestamps, controller.position_history, color="black")
+    # ax.plot(controller.time_stamps, controller.joint_position_history, color="black")
     # plt.show()
+
+    # save to csv of time_stamps, joint_position_history
+    # print(controller.time_stamps)
+    np.savetxt('position.csv', (controller.time_stamps, controller.joint_position_history), delimiter=',')
