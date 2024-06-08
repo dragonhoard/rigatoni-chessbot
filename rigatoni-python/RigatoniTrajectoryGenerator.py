@@ -1,3 +1,9 @@
+# functions for trajectory and storage
+
+# Code written for final project of UCLA MAEC263C course
+# editor: Jane
+# last edit: 6/5/2024 11:51 by Jane
+
 import numpy as np
 import roboticstoolbox as rtb
 import roboticstoolbox.tools.trajectory as trajectory
@@ -94,6 +100,7 @@ class TrajectoryHolder():
         self.q = q
         self.qd = qd
         self.qdd = qdd
+        print(qdd)
 
         self.idx = 0  # current time index
 
@@ -102,22 +109,21 @@ class TrajectoryHolder():
 
     def get_q(self, time):
         if time >= self.end_time:  # if past end time or is end time
-            return self.q[-1]   # return final desired posiion
+            return self.q[-1,:]   # return final desired posiion
 
         while (self.t[self.idx] < time):  # advance index to the closest timestep (overshooting)
             self.idx += 1
-        print(self.t[self.idx])
 
-        return self.q[self.idx]
+        return self.q[self.idx,:]
 
     def get_q_qd_qdd(self, time):
         if time > self.end_time:  # if past end time
-            return self.q[-1], self.qd[-1], self.qdd[-1]  # return final values of trajectory
+            return self.q[-1,:], self.qd[-1,:], self.qdd[-1,:]  # return final values of trajectory
 
         while (self.t[self.idx] < time):  # advance index to the closest timestep (overshooting)
             self.idx += 1
 
-        return self.q[self.idx], self.qd[self.idx], self.qdd[self.idx]
+        return self.q[self.idx,:], self.qd[self.idx,:], self.qdd[self.idx,:]
 
     def restart_traj(self): # in case it is ever needed to go back to th beginning of a trajectory, this resets the index
         self.idx = 0

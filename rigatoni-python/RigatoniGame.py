@@ -1,3 +1,7 @@
+# Code written for final project of UCLA MAEC263C course
+# editor: Jane
+# last edit: 5/28/2024 11:51 by Jane
+
 import chess
 import chess.variant
 import chess.svg

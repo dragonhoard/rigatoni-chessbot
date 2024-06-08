@@ -1,5 +1,9 @@
 # classes for arm, board, pieces, controller
 # to be used as parameter structs
+
+# Code written for final project of UCLA MAEC263C course
+# last edit: 6/5/2024 11:51 by Jane
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -117,7 +121,7 @@ class Arm():
 
         return x_e
 
-    def IK(self, x_e, choice=0):
+    def IK(self, x_e, choice=1):
         q = np.zeros(2,)
 
         # compute th2
@@ -133,6 +137,11 @@ class Arm():
         b = self.l2 * s2
 
         q[0] = np.arctan2(a * x_e[1] - x_e[0] * b, x_e[0] * a + b * x_e[1])
+
+        # make th1 between -90 and 270
+        if q[0] < -np.pi/2:  # if less than -90 (-90, -180]
+            q[0] = q[0] + 2*np.pi
+
 
         # combine into q
         return q

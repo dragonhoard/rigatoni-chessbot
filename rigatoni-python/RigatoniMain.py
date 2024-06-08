@@ -1,3 +1,7 @@
+# Code written for final project of UCLA MAEC263C course
+# editor: Jane
+# last edit: 5/31/2024 11:51 by Jane
+
 from enum import Enum
 import time
 import serial
@@ -5,10 +9,11 @@ from RigatoniGame import RigatoniGame, Color, Interactor
 import RigatoniParameterClasses as par
 from RigatoniTrajectoryGenerator import create_path_points, generate_time_trajectory, EE_Operation
 
+# download stock-fish engine and change file path
 engine_path = r"C:\Users\daced\Downloads\fairy-stockfish-largeboard_x86-64-bmi2.exe"
 
-# open serial port for gripper communication via arduino
-'''
+# open serial port for gripper communication via arduino, uncomment when using gripper
+''' 
 ardSerialInst = serial.Serial()
 portVar = "COM7"
 ardSerialInst.baudrate = 9600
@@ -35,26 +40,6 @@ def open_gripper():
     #ardSerialInst.write(command.encode('utf-8'))
     time.sleep(2)
     return None
-
-# arm parameters
-l1 = 0.165  # m, link 1 length
-l2 = 0.165  # m, link 2 length
-rest_position = [0.05, 0]
-
-# board parameters
-L = 0.280  # m, outer board side length
-l = 0.256  # m, playing area side length
-h = 0.052  # m, m, offset from side of board to robot base
-
-# trajectory settings
-sampling_rate = 0.001
-ee_speed = 0.25
-ee_acceleration = 3
-
-trajSet = par.TrajectorySettings(sampling_rate, ee_speed, ee_acceleration)
-armRigatoni = par.Arm(l1, l2, rest_position)
-boardRigatoni = par.Board(L, l, h)
-Rigatoni_side = Color.WHITE  # which side is Rigatoni installed on
 
 def robot_commander(arm_move, ee_info, turn):
     global armRigatoni
@@ -104,13 +89,35 @@ def robot_commander(arm_move, ee_info, turn):
             #   feed trajectory to chosen controller
             chosen_controller()
 
+## SETTING PARAMETERS
+# arm parameters
+l1 = 0.165  # m, link 1 length
+l2 = 0.165  # m, link 2 length
+rest_position = [0.05, 0]
+
+# board parameters
+L = 0.280  # m, outer board side length
+l = 0.256  # m, playing area side length
+h = 0.052  # m, m, offset from side of board to robot base
+
+# trajectory settings
+sampling_rate = 0.001
+ee_speed = 0.25
+ee_acceleration = 3
+
+trajSet = par.TrajectorySettings(sampling_rate, ee_speed, ee_acceleration)
+armRigatoni = par.Arm(l1, l2, rest_position)
+boardRigatoni = par.Board(L, l, h)
+Rigatoni_side = Color.WHITE  # which side is Rigatoni installed on
 
 ## GAME SETTINGS
 # define who decides the move, and who physically makes the move for each player
-white_info = [Interactor.BOT, Interactor.BOT ]
-black_info = [Interactor.BOT, Interactor.USER ]
+white_info = [Interactor.BOT, Interactor.BOT]
+black_info = [Interactor.BOT, Interactor.USER]
 bot_side = Color.WHITE
 
-# start the game
-game = RigatoniGame(white_info, black_info, bot_side, robot_commander, engine_path)
+
+if __name__ == "__main__":
+    # start the game
+    game = RigatoniGame(white_info, black_info, bot_side, robot_commander, engine_path)
 
