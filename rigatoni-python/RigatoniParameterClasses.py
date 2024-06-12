@@ -127,6 +127,7 @@ class Arm():
         # compute th2
         c2 = computeNeglect((x_e[0] ** 2 + x_e[1] ** 2 - self.l1 ** 2 - self.l2 ** 2) / (2 * self.l1 * self.l2))
         s2 = computeNeglect(np.sqrt(1 - c2 ** 2))
+        print(1 - c2 ** 2)
 
         if choice == 1:
             s2 = -s2

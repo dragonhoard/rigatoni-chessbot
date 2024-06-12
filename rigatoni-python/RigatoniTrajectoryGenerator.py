@@ -90,6 +90,36 @@ def generate_time_trajectory(point_a, point_b, arm, traj_set):
     return tvec, tq, tg
 
 
+def generate_time_trajectory_joint_space(point_a, point_b, arm, traj_set):
+    distance = np.linalg.norm(point_b - point_a)
+
+    pos_a = arm.IK(point_a)
+    pos_b = arm.IK(point_b)
+
+    # estimate time for parabolic blend
+    tb = traj_set.ee_speed / traj_set.ee_acceleration
+    distance_covered = tb ** 2 * traj_set.ee_acceleration
+    linear_time = (distance - distance_covered)/traj_set.ee_speed
+    t = 2 *tb + max(0, linear_time)
+
+    t = traj_set.sampling_rate * np.ceil(t / traj_set.sampling_rate)
+    tvec = np.arange(0, t+traj_set.sampling_rate, traj_set.sampling_rate)
+    tq = rtb.mtraj(rtb.trapezoidal, point_a, point_b, tvec)
+
+    # # convert to joint space
+    # q_des = np.zeros([2, len(tvec)])
+    # qd_des = np.zeros([2, len(tvec)])
+    # for i in range(len(tvec)):
+    #     q_des[:, i] = arm.IK(np.array(tg.q[i,:]))
+    #     qd_des[:, i] = np.linalg.inv(arm.Jacobian(q_des[:, i])) @ np.array(tg.qd[i,:])
+    # qdd_des = np.append(np.diff(qd_des), [[0],[0]], axis=1)
+    #
+    # tq = trajectory.Trajectory('mtraj', tvec, q_des.T, qd_des.T, qdd_des.T)
+
+    return tvec, tq
+
+
+
 class TrajectoryHolder():
     # TrajectoryHolder assumes trajectory inquiries will only ever be requested
     # in time increasing order, unless restart_traj is called
@@ -100,8 +130,6 @@ class TrajectoryHolder():
         self.q = q
         self.qd = qd
         self.qdd = qdd
-        print(qdd)
-
         self.idx = 0  # current time index
 
     def get_end_time(self):

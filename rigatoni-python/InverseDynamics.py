@@ -39,6 +39,7 @@ class InverseDynamicsController:
             dynamixel_ids: tuple[int, int],
             K_P: NDArray[np.double],
             K_D: NDArray[np.double],
+            ee_dynamixel_id: int
     ):
         # ------------------------------------------------------------------------------
         # Controller Related Variables
@@ -47,13 +48,13 @@ class InverseDynamicsController:
         self.K_P = np.asarray(K_P, dtype=np.double)
         self.K_D = np.asarray(K_D, dtype=np.double)
 
-        self.control_freq_Hz = 60.0
+        self.control_freq_Hz = 45.0
         self.control_period_s = 1 / self.control_freq_Hz
         self.loop_manager = FixedFrequencyLoopManager(
             period_ns=round(self.control_period_s * 1e9)
         )
         self.timeout = 5
-        self.threshold = .5
+        self.threshold = .1
         self.should_continue = True
 
         self.timestamp = 0.0
@@ -63,6 +64,17 @@ class InverseDynamicsController:
         self.joint_velocity_history = deque()
         self.position_error_history = deque()
         self.torque_command_history = deque()
+        self.pwm_history = deque()
+        self.goal_position_history = deque()
+
+        # low pass filter from https://www.meme.net.au/butterworth.html
+        # sampling: 45
+        # 3dB cutoff: 20
+        self.filter_b = np.array([1, 2, 1])
+        self.filter_a = np.array([-1.938, -0.782])
+        self.filter_a0 = 1.280
+        self.filter_velocities = deque(maxlen=len(self.filter_a))
+        self.filter_times = deque(maxlen=len(self.filter_b))
 
         self.q_error = np.zeros(2, )
         self.qd_error = np.zeros(2, )
@@ -81,6 +93,7 @@ class InverseDynamicsController:
         # ------------------------------------------------------------------------------
         self.dxl_io = DynamixelIO(device_name=str(serial_port_name), baud_rate=57_600)
         self.dynamixel_ids = dynamixel_ids
+        self.ee_dynamixel_id = ee_dynamixel_id
 
         motor1 = DynamixelMotor(
             dynamixel_ids[0],
@@ -94,7 +107,14 @@ class InverseDynamicsController:
             json_file=get_mx28_control_table_json_path(),
             protocol=2,
         )
+        ee_motor = DynamixelMotor(
+            ee_dynamixel_id,
+            self.dxl_io,
+            json_file=get_mx28_control_table_json_path(),
+            protocol=2,
+        )
         self.motors = [motor1, motor2]
+        self.ee_motor = ee_motor
 
         # ------------------------------------------------------------------------------
         # DC Motor Modeling
@@ -154,6 +174,14 @@ class InverseDynamicsController:
         self.motors[0].torque_enable()
         self.motors[1].torque_enable()
 
+    def reset_history(self):
+        self.timestamp = 0.0
+        self.time_stamps = deque()
+        self.joint_position_history = deque()
+        self.joint_velocity_history = deque()
+        self.position_error_history = deque()
+        self.goal_position_history = deque()
+
     def start(self, traj: TrajectoryHolder):
         self.should_continue = True
         start_time = time.time()
@@ -167,9 +195,17 @@ class InverseDynamicsController:
             self.joint_position_history.append(q_actual)  # Save for plotting
             self.joint_velocity_history.append(qd_actual)
             self.time_stamps.append(time.time() - start_time + self.timestamp)  # Save for plotting
+            self.filter_times.append(time.time() - start_time + self.timestamp)
+
+            # if len(self.filter_times) == len(self.filter_a):
+            #     for i in range(2):
+            #         q_actual[i] = np.multiply(self.filter_b, self.filter_times) + np.multiply(self.filter_a, np.array(self.filter_velocities)[:,i])
+            #         q_actual[i] /= self.filter_a0
+
+            self.filter_velocities.append(qd_actual)
 
             # Step 2 - Calculate Command
-            print("Current Position: " + str(q_actual))
+            # print("Current Position: " + str(q_actual))
             q_desired, qd_desired, qdd_desired = traj.get_q_qd_qdd(time.time() - start_time)
             q_error = q_desired - q_actual
             qd_error = qd_desired - qd_actual
@@ -198,8 +234,9 @@ class InverseDynamicsController:
             # Calculate Nonlinear Compensation Term and Inverse Inertial Terms
             # -----------------------------------------------------------------------------------
 
-            nonlinear_term_n = self.nonlinear_terms_function(np.deg2rad(q_actual), np.deg2rad(qd_actual))
-            inertia_term_B = self.inertia_matrix_function(np.deg2rad(q_actual))
+            nonlinear_term_n = self.nonlinear_terms_function(np.deg2rad(q_actual), np.deg2rad(qd_actual)) @ np.deg2rad(qd_actual)
+            inertia_term_B = np.multiply(self.inertia_matrix_function(np.deg2rad(q_actual)), np.array([[1, 1], [1, 1]]))
+
 
             #####################################################################################
 
@@ -207,27 +244,30 @@ class InverseDynamicsController:
             # Calculate Control Action
             # -----------------------------------------------------------------------------------
 
-            y = self.K_P @ q_error + self.K_D @ qd_error + qdd_desired
+            y = self.K_P @ q_error + self.K_D @ qd_error + np.deg2rad(qdd_desired)
             u = inertia_term_B @ y + nonlinear_term_n
 
-            print("Goal Position: " + str(q_desired))
-            print("U: " + str(u))
             print("Q Error:" + str(q_error))
-            print("Qd Error:" + str(qd_error))
+            # #print("Qd Error:" + str(qd_error))
             # Convert torque to pwm and send command
-            for i in range(len(self.motors)):
-                pwm_command = self.motor_model.calc_pwm_command(u[i])
-                pwm_lim = self.pwm_limits[i]
-                pwm_command= round(max(min(pwm_command[i], pwm_lim), -pwm_lim))
-                print(pwm_command)
-                # send command
-                self.motors[i].write_control_table("Goal_PWM", pwm_command)
+            pwm_command = self.motor_model.calc_pwm_command(u)
+            self.send_pwm_command(pwm_command)
+
+            # for i in range(len(self.motors)):
+            #     pwm_command = self.motor_model.calc_pwm_command([u[i]])
+            #     pwm_lim = self.pwm_limits[i]
+            #     pwm_command= round(max(min(pwm_command[i], pwm_lim), -pwm_lim))
+            #     print(pwm_command)
+            #     # send command
+            #     self.motors[i].write_control_table("Goal_PWM", pwm_command)
+            self.pwm_history.append(pwm_command)
+            self.goal_position_history.append(q_desired)
 
             self.should_continue = (time.time() - start_time < traj.get_end_time() or  # trajectory not done
                                     ((not np.all(abs(q_error) < self.threshold) or not np.all(
                                         abs(qd_error) < 1)) and time.time() - start_time < traj.get_end_time() + self.timeout))  # trajectory done, error is too large and have not timed out
             self.loop_manager.sleep()
-        #self.timestamp = self.time_stamps[-1]
+        self.timestamp = self.time_stamps[-1]
 
     def stop(self):
         self.should_continue = False
@@ -290,6 +330,29 @@ class InverseDynamicsController:
 
         ################################################################################
         return joint_velocities
+
+    def send_pwm_command(self, pwm_commands: NDArray[np.int64]):
+        # Assumes motors are the same model (i.e. MX-28AR)
+        goal_pwm_control_table_address, goal_pwm_data_len = self.motors[
+            0
+        ].CONTROL_TABLE["Goal_PWM"]
+
+        ################################################################################
+        # Use the `group_sync_write` to simultaneously write/send the PWM commands in
+        # the `pwm_commands` argument of this function to both motors in your
+        # manipulator.
+        # ------------------------------------------------------------------------------
+        pwm_commands_by_dynamixel_id = {
+            self.dynamixel_ids[0]: pwm_commands[0],
+            self.dynamixel_ids[1]: pwm_commands[1]
+        }
+        group_sync_write(
+            self.dxl_io,
+            pwm_commands_by_dynamixel_id,
+            goal_pwm_control_table_address,
+            goal_pwm_data_len,
+        )
+
 
     @staticmethod
     def convert_velocity_tick_to_deg_per_s(velocity_tick: int):

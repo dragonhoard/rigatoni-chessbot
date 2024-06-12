@@ -98,7 +98,7 @@ rest_position = [0.05, 0]
 # board parameters
 L = 0.280  # m, outer board side length
 l = 0.256  # m, playing area side length
-h = 0.052  # m, m, offset from side of board to robot base
+h = 0.0425  # m, m, offset from side of board to robot base
 
 # trajectory settings
 sampling_rate = 0.001

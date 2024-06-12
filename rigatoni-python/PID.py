@@ -39,7 +39,9 @@ class PIDPositionController:
         K_P: NDArray[np.double],
         K_I: NDArray[np.double],
         K_D: NDArray[np.double],
-        feedforward_gain: NDArray[np.double],
+        velocity_feedforward: NDArray[np.double],
+        acceleration_feedforward: NDArray[np.double],
+        ee_dynamixel_id: int
     ):
         # ------------------------------------------------------------------------------
         # Controller Related Variables
@@ -48,20 +50,17 @@ class PIDPositionController:
         self.K_P = np.asarray(K_P, dtype=np.double)
         self.K_I = np.asarray(K_I, dtype=np.double)
         self.K_D = np.asarray(K_D, dtype=np.double)
-        self.feedforward_gain = np.asarray(feedforward_gain, dtype=np.double)
+        self.velocity_feedforward = np.asarray(velocity_feedforward, dtype=np.double)
+        self.acceleration_feedforward = np.asarray(acceleration_feedforward, dtype=np.double)
 
-        self.control_freq_Hz = 60.0
+        self.control_freq_Hz = 40
         self.control_period_s = 1 / self.control_freq_Hz
         self.loop_manager = FixedFrequencyLoopManager(
             period_ns=round(self.control_period_s * 1e9)
         )
         self.timeout = 2
-        self.threshold = .5
+        self.threshold = .1
         self.should_continue = True
-
-        self.stiction_comp = np.array([0, 0])
-        self.pwm_help = np.array([10, 10])
-
 
         self.timestamp = 0.0
         self.time_stamps = deque()
@@ -69,13 +68,23 @@ class PIDPositionController:
         self.joint_position_history = deque()
         self.joint_velocity_history = deque()
         self.position_error_history = deque()
+        self.pwm_history = deque()
+        self.goal_position_history = deque()
 
         self.error = np.zeros(2,)
         self.error_integral = np.zeros(2,)
-        self.velocity_error = np.zeros(2, )
+        self.error_derivative = np.zeros(2, )
         self.error_window = deque(maxlen=2)
         self.num_convergence_samples = round(0.5 / self.dt)
         self.convergence_window = deque(maxlen=self.num_convergence_samples)
+
+        # low pass filter from https://www.meme.net.au/butterworth.html
+        # sampling: 45
+        # 3dB cutoff: 20
+        self.filter_a = np.array([1, 2, 1])
+        self.filter_b = np.array([-1.938, -0.782])
+        self.filter_velocities = deque(maxlen=len(self.filter_a))
+        self.filter_times = deque(maxlen=len(self.filter_b))
 
         # ------------------------------------------------------------------------------
         # Motor Communication Related Variables
@@ -95,7 +104,14 @@ class PIDPositionController:
             json_file=get_mx28_control_table_json_path(),
             protocol=2,
         )
+        ee_motor = DynamixelMotor(
+            ee_dynamixel_id,
+            self.dxl_io,
+            json_file=get_mx28_control_table_json_path(),
+            protocol=2,
+        )
         self.motors = [motor1, motor2]
+        self.ee_motor = ee_motor
 
         # ------------------------------------------------------------------------------
         # DC Motor Modeling
@@ -163,7 +179,7 @@ class PIDPositionController:
         start_time = time.time()
 
         while self.should_continue:
-            self.time_stamps.append(time.time() - start_time)  # Save for plotting
+            self.time_stamps.append(time.time() - start_time + self.timestamp)  # Save for plotting
             #print("Time: " + str(time.time()-start_time))
             # Step 1 - Get Feedback
             q_actual = self.read_joint_positions_deg()
@@ -171,50 +187,58 @@ class PIDPositionController:
 
 
             # Step 2 - Calculate Command
-            print("Current Position: " + str(q_actual))
+            #print("Current Position: " + str(q_actual))
             print("Goal Position " + str(traj.get_q(time.time()-start_time)))
             q_des, qd_des, qdd_des = traj.get_q_qd_qdd((time.time()-start_time))
             self.error = q_des - q_actual # make sure the indexing is right
-            self.velocity_error = qd_des - qd_actual
 
             self.position_error_history.append(self.error)
-            #self.error_window.appendleft(self.error)
-            #self.convergence_window.append(self.error)
+            self.error_window.appendleft(self.error)
+            self.convergence_window.append(self.error)
             self.error_integral += self.error * self.dt
 
-            # # only start derivative error at the second time step
-            # if len(self.error_window) == 2:
-            #     self.velocity_error = (
-            #         (self.error_window[-1] - self.error_window[0]) / self.dt
-            #     )
+            if len(self.error_window) == 2:
+                self.error_derivative = (
+                    (self.error_window[-1] - self.error_window[0]) / 2 / self.dt
+                )
 
             pwm_commands = (
                     self.K_P @ self.error
                     + self.K_I @ self.error_integral
-                    + self.K_D @ self.velocity_error
-                    + self.feedforward_gain @ qdd_des
+                    + self.K_D @ self.error_derivative
+                    + self.velocity_feedforward @ qd_des
+                    + self.acceleration_feedforward @ qdd_des
             )
-            print(qdd_des[0])
+            #print("P" + str(self.K_P @ self.error))
+            #print("I" + str(self.K_I @ self.error_integral))
+            #print("D" + str(self.K_D @ self.error_derivative))
 
             pwm_command = pwm_commands.tolist()
             for i in range(len(self.motors)):
                 pwm_lim = self.pwm_limits[i]
-                if qd_actual[i] < 2 and abs(pwm_command[i]) > self.pwm_help[i]:
-                    print("add" + str(i+1))
-                    pwm_command[i] += self.stiction_comp[i]*np.sign(pwm_command[i])
                 pwm_command[i] = round(max(min(pwm_command[i], pwm_lim), -pwm_lim))
+                # # send command
+                # print('PWM' + str(pwm_command[i]))
+                # self.motors[i].write_control_table("Goal_PWM", pwm_command[i])
+            self.send_pwm_command(pwm_command)
+            self.pwm_history.append(pwm_command)
 
-                # send command
-                print('PWM' + str(pwm_command[i]))
-                self.motors[i].write_control_table("Goal_PWM", pwm_command[i])
+            # for i in range(len(self.motors)):
+            #     pwm_lim = self.pwm_limits[i]
+            #     pwm_command[i] = round(max(min(pwm_command[i], pwm_lim), -pwm_lim))
+            #     # send command
+            #     self.motors[i].write_control_table("Goal_PWM", pwm_command[i])
 
-            print("Velocity" + str(qd_actual))
+            #print("Velocity" + str(qd_actual))
             self.joint_position_history.append(q_actual)  # Save for plotting
             self.joint_velocity_history.append(qd_actual)
+            self.goal_position_history.append(q_des)
             print("Position Error: " + str(self.error))
             self.should_continue = (time.time()-start_time < traj.get_end_time() or  # trajectory not done
-                                    ((not np.all(abs(self.error) < self.threshold) or not np.all(abs(self.velocity_error) < 1)) and time.time()-start_time < traj.get_end_time() + self.timeout)) # trajectory done, error is too large and have not timed out
+                                    ((not np.all(abs(self.error) < self.threshold) or not np.all(abs(qd_actual) < 1)) and time.time()-start_time < traj.get_end_time() + self.timeout)) # trajectory done, error is too large and have not timed out
             self.loop_manager.sleep()
+
+        self.timestamp = self.time_stamps[-1]
 
 
     def stop(self):
@@ -276,6 +300,37 @@ class PIDPositionController:
 
         ################################################################################
         return joint_velocities
+
+    def send_pwm_command(self, pwm_commands: NDArray[np.int64]):
+        # Assumes motors are the same model (i.e. MX-28AR)
+        goal_pwm_control_table_address, goal_pwm_data_len = self.motors[
+            0
+        ].CONTROL_TABLE["Goal_PWM"]
+
+        ################################################################################
+        # Use the `group_sync_write` to simultaneously write/send the PWM commands in
+        # the `pwm_commands` argument of this function to both motors in your
+        # manipulator.
+        # ------------------------------------------------------------------------------
+        pwm_commands_by_dynamixel_id = {
+            self.dynamixel_ids[0]: pwm_commands[0],
+            self.dynamixel_ids[1]: pwm_commands[1]
+        }
+        group_sync_write(
+            self.dxl_io,
+            pwm_commands_by_dynamixel_id,
+            goal_pwm_control_table_address,
+            goal_pwm_data_len,
+        )
+
+    def reset_history(self):
+        self.timestamp = 0.0
+        self.time_stamps = deque()
+        self.joint_position_history = deque()
+        self.joint_velocity_history = deque()
+        self.position_error_history = deque()
+        self.pwm_history = deque()
+        self.goal_position_history = deque()
 
     @staticmethod
     def convert_velocity_tick_to_deg_per_s(velocity_tick: int):
