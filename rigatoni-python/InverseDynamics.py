@@ -181,6 +181,7 @@ class InverseDynamicsController:
         self.joint_velocity_history = deque()
         self.position_error_history = deque()
         self.goal_position_history = deque()
+        self.pwm_history = deque()
 
     def start(self, traj: TrajectoryHolder):
         self.should_continue = True

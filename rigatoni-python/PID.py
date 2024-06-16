@@ -193,7 +193,7 @@ class PIDPositionController:
             self.error = q_des - q_actual # make sure the indexing is right
 
             self.position_error_history.append(self.error)
-            self.error_window.appendleft(self.error)
+            self.error_window.append(self.error)
             self.convergence_window.append(self.error)
             self.error_integral += self.error * self.dt
 

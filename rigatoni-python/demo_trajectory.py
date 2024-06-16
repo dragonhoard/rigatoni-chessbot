@@ -96,7 +96,7 @@ controller = PIDPositionController(
 
 # do the demo
 
-arm_move = 'c3f6k'  # 'a1a5'
+arm_move = 'c3f6'  # 'a1a5'
 path_points, point_action, piece_associated = create_path_points(arm_move, 0, 0, armRigatoni, boardRigatoni)
 
 curr_joint_pos = np.deg2rad(controller.read_joint_positions_deg())
@@ -142,13 +142,22 @@ for i in range(len(path_points[1,:])):
 
     if not i == len(path_points[1,:]) - 1: # if not last point
         print('generate trajectory')
-        #   generate trajectory to next pathpoint
+        #   generate trajectory to next pathpoint, task space line
         tvec, tq, tg = generate_time_trajectory(path_points[:,i], path_points[:,i+1], armRigatoni, trajSet)
         q = np.rad2deg(tq.q)
         qd = np.rad2deg(tq.qd)
         qdd = np.rad2deg(tq.qdd)
 
         traj = TrajectoryHolder(tvec, q, qd, qdd)
+
+        # # generate trajectory joint space
+        # tvec, tq = generate_time_trajectory_joint_space(armRigatoni.IK(path_points[:, i]),
+        #                                                 armRigatoni.IK(path_points[:, i + 1]), armRigatoni, trajSet)
+        # q = np.rad2deg(tq.q)
+        # qd = np.rad2deg(tq.qd)
+        # qdd = np.rad2deg(tq.qdd)
+        # traj = TrajectoryHolder(tvec, q, qd, qdd)
+
         #   feed trajectory to chosen controller
 
         controller.motors[0].torque_enable()

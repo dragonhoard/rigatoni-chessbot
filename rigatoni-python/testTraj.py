@@ -34,28 +34,14 @@ boardRigatoni = par.Board(L, l, h)
 dynamixel_ids = (4, 5)
 serial_port_name = "COM5"
 
-# K_P = np.array([[85.3, 0], [0, 68]])
-# K_I = np.array([[0, 0], [0, 0.5]])
-# K_D = np.array([[1.3, 0], [0, 1.16]])
-# velocity_feedforward = 0*np.array([[1.5, 0], [0, 0.75]])
-# acceleration_feedforward = 0*np.array([[1.75, 0], [0, 0.8]])
-#
-# controller = PIDPositionController(
-#     serial_port_name=serial_port_name,
-#     K_P=K_P,
-#     K_I=K_I,
-#     K_D=K_D,
-#     velocity_feedforward=velocity_feedforward,
-#     acceleration_feedforward=acceleration_feedforward,
-#     dynamixel_ids=dynamixel_ids,
-#     ee_dynamixel_id=2,
-# )
-
-K_P = np.array([[65, 0], [0, 55]])
-K_I = np.array([[28.5, 0], [0, 21]])
-K_D = np.array([[-3, 0], [0, -2]])
-velocity_feedforward = np.array([[1.5, 0], [0, .75]])
-acceleration_feedforward = np.array([[1.75, 0], [0, 0.8]])
+custom_label = "PID"
+label = "PID"
+name = "PID"
+K_P = np.array([[85.3, 0], [0, 68]])
+K_I = np.array([[0, 0], [0, .1]])
+K_D = 0*np.array([[2, 0], [0, 2]])
+velocity_feedforward = 0*np.array([[1.5, 0], [0, 0.75]])
+acceleration_feedforward = 0*np.array([[1.75, 0], [0, 0.8]])
 
 controller = PIDPositionController(
     serial_port_name=serial_port_name,
@@ -68,9 +54,31 @@ controller = PIDPositionController(
     ee_dynamixel_id=2,
 )
 
-
+# custom_label = "PID w feedforward"
+# label = "PID w feedforward"
+# name = "PID w feedforward"
+# K_P = np.array([[85, 0], [0, 85]])
+# K_I = np.array([[28.5, 0], [0, 21]])
+# K_D = np.array([[3, 0], [0, 3]])
+# velocity_feedforward = np.array([[1.5, 0], [0, .75]])
+# acceleration_feedforward = np.array([[1.75, 0], [0, 1.8]])
+#
+# controller = PIDPositionController(
+#     serial_port_name=serial_port_name,
+#     K_P=K_P,
+#     K_I=K_I,
+#     K_D=K_D,
+#     velocity_feedforward=velocity_feedforward,
+#     acceleration_feedforward=acceleration_feedforward,
+#     dynamixel_ids=dynamixel_ids,
+#     ee_dynamixel_id=2,
+# )
+#
+# custom_label = "Inverse Dynamics"
+# label = 'Inverse Dynamics'
+# name = 'Inverse Dynamics'
 # K_P = np.array([[2.5, 0], [0, 4.7]])
-# K_D = np.array([[0.035, 0.0], [0, 0.05]])
+# K_D = 0*np.array([[0.035, 0.0], [0, 0.05]])
 #
 # controller = InverseDynamicsController(
 #     serial_port_name=serial_port_name,
@@ -90,12 +98,16 @@ match traj_choice:
         #arm_move = 'h1a1'  # 'a1a5'
         #arm_move = 'a1a8'  # 'a1a5'
         #arm_move = 'a8e5'  # 'a1a5'
-        arm_move = 'c3f6'  # 'a1a5'
+        arm_move = 'a8a1'  # 'a1a5'
+        name += " " + arm_move + " task space"
+        move_type = "task space"
         path_points, point_action, piece_associated = create_path_points(arm_move, 0, 0, armRigatoni, boardRigatoni)
         print(path_points)
         i = 1 # which trajectory
         tvec, tq, tg = generate_time_trajectory(path_points[:,i], path_points[:,i+1], armRigatoni, trajSet)
 
+        tq.plot()
+        axcd
         q = np.rad2deg(tq.q)
         qd = np.rad2deg(tq.qd)
         qdd = np.rad2deg(tq.qdd)
@@ -134,7 +146,9 @@ match traj_choice:
         # arm_move = 'h1a1'  # 'a1a5'
         # arm_move = 'a1a8'  # 'a1a5'
         # arm_move = 'a8e5'  # 'a1a5'
-        arm_move = 'a7f6'  # 'a1a5'
+        arm_move = 'a1h1'  # 'a1a5'
+        name += " " + arm_move + " joint space"
+        move_type = "joint space"
         path_points, point_action, piece_associated = create_path_points(arm_move, 0, 0, armRigatoni, boardRigatoni)
         print(path_points)
         i = 1  # which trajectory
@@ -210,12 +224,14 @@ ax.legend()
 
 # get task space traj
 x = np.zeros([2, len(controller.time_stamps)])
+x_des = np.zeros([2, len(controller.time_stamps)])
 for i in range(len(controller.time_stamps)):
     x[:, i:i+1] = armRigatoni.FK(np.deg2rad(np.array(controller.joint_position_history)[i,:]))
+    x_des[:, i:i + 1] = armRigatoni.FK(np.deg2rad(np.array(controller.goal_position_history)[i, :]))
 fig_task_space = plt.figure()
 ax = plt.subplot(111)
 ax.plot(x[0,:], x[1,:], label='Actual', ls='solid', color='r')
-ax.plot(tg.q[:,0], tg.q[:,1], label='Desired', ls='solid', color='b')
+ax.plot(x_des[0,:], x_des[1,:], label='Desired', ls='solid', color='b')
 ax.set_ylabel('Y Position (m)')
 ax.set_xlabel('X Position (m)')
 ax.set_title('Trajectory in Task Space')
@@ -238,7 +254,27 @@ fig_vel.savefig('fig2.png')
 fig_error.savefig('fig3.png')
 fig_task_space.savefig('fig4.png')
 
+t = np.array(controller.time_stamps)
+q1 = np.array(controller.joint_position_history)[:,0]
+q2 = np.array(controller.joint_position_history)[:,1]
+q1err = np.array(controller.position_error_history)[:,0]
+q2err = np.array(controller.position_error_history)[:,1]
+q1_des = np.array(controller.goal_position_history)[:,0]
+q2_des = np.array(controller.goal_position_history)[:,1]
+pwm1 = np.array(controller.pwm_history)[:,0]
+pwm2 = np.array(controller.pwm_history)[:,1]
+xx = x[0,:]
+yy = x[1,:]
+xx_des = x_des[0,:]
+yy_des = x_des[1,:]
 
-#data = np.column_stack((np.asarray(controller.time_stamps), np.asarray(controller.joint_position_history)))
-#np.savetxt('position.csv', data, delimiter=',')
+
+data = np.array([t, q1, q2, q1err, q2err, q1_des, q2_des, pwm1, pwm2,xx,yy,xx_des,yy_des] ).T
+print(data)
+header = ("# " + label +
+          "\r# " + arm_move +
+          "\r# " + move_type +
+          "\r# " + custom_label +
+          "\rt,q1,q2,q1err,q2err,q1_des,q2_des,pwm1,pwm2,x,y,x_des,y_des")
+np.savetxt(name + '.csv', data, delimiter=',', header=header, comments="")
 
