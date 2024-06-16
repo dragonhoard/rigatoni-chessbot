@@ -25,33 +25,33 @@ rigParam = [l1, l2, tiny];
 %
 %use once solidworks available
 % masses
-m1 = .297; % kg, mass of link 1 + motor 2
-m2_1 = .207; % kg, mass of link 2
+m1 = .309534869; % kg, mass of link 1 + motor 2
+m2_1 = .3088; % kg, mass of link 2
 m2_2 = 0; % kg, mass of end effector (may eventually be lumped into m2)
 m2 = m2_1 + m2_2;
 
 % center of masses
-P1c1 = [ 82.4096e-3;... % m, location for center of mass of link 1 + motor 2, wrt frame {1}
+P1c1 = [ 82.499963e-3;... % m, location for center of mass of link 1 + motor 2, wrt frame {1}
         0;...
-        32.0935e-3];
-P2c2_1 = [122.4726e-3;... % m, location for center of mass of link 2, wrt frame {2}
+        207.529513e-3];
+P2c2_1 = [117.23e-3;... % m, location for center of mass of link 2, wrt frame {2}
         0;...
-        -35.6748e-3];
-P2c2_2 = [2;... % m, location for center of mass of end effector, wrt frame {2}
+        132.964286e-3];
+P2c2_2 = [0;... % m, location for center of mass of end effector, wrt frame {2}
         0;...
         0];
 P2c2 = (m2_1*P2c2_1 + m2_2*P2c2_2)/m2;
 
 % inertias
     % from solidworks or other approximation
-R = [1 0 0; 0 0 -1; 0 1 0];
-Ic1 = 1e-9* [ 157037.4032 873.4683        -206.5921;...    % Ix, kgm^2, inertia of link 1 + motor 2 about CoM
-            873.4683     1439280.4785    0 ;...             % Iy, kgm^2,
-             -206.5920   0               1447428.5685];      % Iz, kgm^2 (only this one matters)
+R = [1 0 0; 0 1 0; 0 0 1];
+Ic1 = 1e-9* [ 167019.272612 206.604918        75.662525;...    % Ix, kgm^2, inertia of link 1 + motor 2 about CoM
+            206.604918     1481241.899881    -0.000004 ;...             % Iy, kgm^2,
+             75.662525   -0.000004               1472493.387525];      % Iz, kgm^2 (only this one matters)
 Ic1 = R*Ic1*transpose(R);
-Ic2_1 = 1e-9*   [ 139180.4325   -68968.2968     -48.2631;...  % Ix, kgm^2, inertia of link 2 about CoM
-                  -68968.2968   763510.3717     19.8545;...    % Iy, kgm^2,
-                  -48.2631      19.8545         774703.8465];      % Iz, kgm^2 (only this one matters)
+Ic2_1 = 1e-9*   [  271207.175463   -995.035173     -173145.637280;...  % Ix, kgm^2, inertia of link 2 about CoM
+                  -995.035173   1034757.519275     -404.044358;...    % Iy, kgm^2,
+                  -173145.637280       -404.044358         949382.955276];      % Iz, kgm^2 (only this one matters)
 Ic2_1= R*Ic2_1*transpose(R);
 IcEE = [ 0 0 0;...   % Ix, kgm^2, inertia of end effector about CoM
          0 0 0;...    % Iy, kgm^2,

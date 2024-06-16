@@ -57,8 +57,9 @@ P_0_c2 = P_0_c2(1:3);
 
 % find Jv Jw
 Z_0_1 = T_0_1(1:3,3);
-Jv1 = simplify([cross(Z_0_1, P_0_c1-P_0_1), zeros(3,1)]);
-Jw1 = [Z_0_1, zeros(3,1)];
+Z_0_2 = T_0_2(1:3,3);
+Jv1 = simplify([cross(Z_0_1, P_0_c1-P_0_1), cross(Z_0_1, P_0_c1-P_0_2)]);
+Jw1 = [Z_0_1, Z_0_2];
 
 Z_0_2 = T_0_2(1:3,3);
 Jv2 = simplify([cross(Z_0_1, P_0_c2-P_0_1), cross(Z_0_2, P_0_c2-P_0_2)]);
@@ -96,6 +97,6 @@ G2 = simplify(-m1*transpose(gvec)*Jv1(:,2) - m2*transpose(gvec)*Jv2(:,2));
 %% construct tau
 syms t1dd t2dd real
 qdd = [t1dd t2dd];
-tau1 = M(1,1)*qdd(1) + M(1,2)*qdd(2) + V(1) + G1;
-tau2 = M(2,1)*qdd(1) + M(2,2)*qdd(2) + V(2) + G2;
+tau1 = M(1,1)*qdd(1) + M(1,2)*qdd(2) + V(1) + G1
+tau2 = M(2,1)*qdd(1) + M(2,2)*qdd(2) + V(2) + G2
 
